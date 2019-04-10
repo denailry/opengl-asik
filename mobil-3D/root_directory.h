@@ -1,0 +1,1 @@
+const char * logl_root = "/home/denailry/Documents/college/semester-6/grafika-komputer/tugas/learnopengl/LearnOpenGL";
