@@ -8,12 +8,12 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "lib/stb_image.h"
 
-#include "shader.h"
-#include "camera.h"
-#include "filesystem.h"
-#include "objloader.hpp"
+#include "lib/shader.h"
+#include "camera/camera.h"
+#include "lib/filesystem.h"
+#include "lib/objloader.hpp"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -85,30 +85,10 @@ GLuint initUVBuffer(std::vector<glm::vec2> &uvs) {
     return uvbuffer;
 }
 
-int main() {
-    initGL();
-    GLFWwindow* window = createWindow();
-    if (window == 0) {
-        return -1;
-    }
-
-    // build and compile our shader zprogram
-    // ------------------------------------
-    Shader ourShader("camera.vs", "camera.fs");
-
-    // Read our .obj file
-	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec2> uvs;
-	std::vector<glm::vec3> normals; // Won't be used at the moment.
-	bool res = loadOBJ("model.obj", vertices, uvs, normals);
-
-    GLuint VAO = initVertexArray();
-    GLuint vertexBuffer = initVertexBuffer(vertices);
-    GLuint uvBuffer = initUVBuffer(uvs);
-
+void renderCar(GLuint VAO, GLuint VBO, GLuint UVS) {
     // 1rst attribute buffer : vertices
     glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glVertexAttribPointer(
         0,          // attribute
         3,          // size
@@ -120,7 +100,7 @@ int main() {
 
     // 2nd attribute buffer : UVs
     glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, uvBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, UVS);
     glVertexAttribPointer(
         1,          // attribute
         2,          // size
@@ -129,6 +109,26 @@ int main() {
         0,          // stride
         (void*)0    // array buffer offset
     );
+}
+
+int main() {
+    initGL();
+    GLFWwindow* window = createWindow();
+    if (window == 0) {
+        return -1;
+    }
+
+    Shader cameraShader("camera/camera.vs", "camera/camera.fs");
+
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec2> uvs;
+	std::vector<glm::vec3> normals;
+	bool res = loadOBJ("model/model.obj", vertices, uvs, normals);
+
+    GLuint VAOCar = initVertexArray();
+    GLuint vertexBuffer = initVertexBuffer(vertices);
+    GLuint uvBuffer = initUVBuffer(uvs);
+    renderCar(VAOCar, vertexBuffer, uvBuffer);
 
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = glfwGetTime();
@@ -140,27 +140,27 @@ int main() {
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); 
 
-        ourShader.use();
+        cameraShader.use();
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        ourShader.setMat4("projection", projection);
+        cameraShader.setMat4("projection", projection);
 
         glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("view", view);
+        cameraShader.setMat4("view", view);
 
-        glBindVertexArray(VAO);
+        glBindVertexArray(VAOCar);
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3( 0.0f,  0.0f,  0.0f));
         float angle = 20.0f * 0;
         model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-        ourShader.setMat4("model", model);
-        glDrawArrays(GL_TRIANGLES, 0, vertices.size() );
+        cameraShader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    glDeleteVertexArrays(1, &VAO);
+    glDeleteVertexArrays(1, &VAOCar);
     glDeleteBuffers(1, &vertexBuffer);
     glDeleteBuffers(1, &uvBuffer);
 

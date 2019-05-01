@@ -1,1 +1,1 @@
-g++ -std=c++17 main.cpp glad.c stb_image.h shader.h camera.h root_directory.h objloader.hpp objloader.cpp -o main -lglfw3 -lGL -lX11 -lpthread -lXrandr -lXi -ldl -lglut -lGL -lGLEW -lXxf86vm -lXinerama -lXcursor -lrt -L/user/lib/x86_64-linux-gnu
+g++ -std=c++17 main.cpp lib/root_directory.h lib/glad.c lib/stb_image.h camera/camera.h lib/shader.h lib/objloader.hpp lib/objloader.cpp -o main -lglfw3 -lGL -lX11 -lpthread -lXrandr -lXi -ldl -lglut -lGL -lGLEW -lXxf86vm -lXinerama -lXcursor -lrt -L/user/lib/x86_64-linux-gnu
