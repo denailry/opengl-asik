@@ -208,7 +208,7 @@ int main() {
     // load image, create texture and generate mipmaps
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true); // tell stb_image.h to flip loaded texture's on the y-axis.
-    unsigned char *data = stbi_load(FileSystem::getPath("resources/textures/batik1.jpg").c_str(), &width, &height, &nrChannels, 0);
+    unsigned char *data = stbi_load(FileSystem::getPath("textures/batik1.jpg").c_str(), &width, &height, &nrChannels, 0);
     if (data)
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
@@ -232,7 +232,7 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     
     // load image, create texture and generate mipmaps
-    data = stbi_load(FileSystem::getPath("resources/textures/batik2.jpg").c_str(), &width, &height, &nrChannels, 0);
+    data = stbi_load(FileSystem::getPath("textures/batik2.jpg").c_str(), &width, &height, &nrChannels, 0);
     if (data)
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
