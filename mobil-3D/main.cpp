@@ -14,6 +14,8 @@
 #include "camera/camera.h"
 #include "lib/filesystem.h"
 #include "lib/objloader.hpp"
+#include "rain/raindrop.hpp"
+#include "rain/rain.hpp"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -30,6 +32,8 @@ bool firstMouse = true;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+
+const float UPDATE_DELAY = 0.003;
 
 GLFWwindow* createWindow() {
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Mobil 3D", NULL, NULL);
@@ -85,7 +89,7 @@ GLuint initUVBuffer(std::vector<glm::vec2> &uvs) {
     return uvbuffer;
 }
 
-void renderCar(GLuint VAO, GLuint VBO, GLuint UVS) {
+void setupCar(GLuint VBO, GLuint UVS) {
     // 1rst attribute buffer : vertices
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -111,6 +115,58 @@ void renderCar(GLuint VAO, GLuint VBO, GLuint UVS) {
     );
 }
 
+void setupRain(GLuint VBO) {
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glVertexAttribPointer(
+        0,          // attribute
+        3,          // size
+        GL_FLOAT,   // type
+        GL_FALSE,   // normalized?
+        0,          // stride
+        (void*)0    // array buffer offset
+    );
+}
+
+std::vector<glm::vec3> generateRainVertices() {
+    std::vector<glm::vec3> vertices;
+    
+    float x = 0;
+    float z = 0;
+
+    float yStart = RAIN_Y_OFFSET;
+    float yEnd = RAIN_Y_OFFSET - RAIN_HEIGHT;
+    float xStart = x - RAIN_WIDTH;
+    float xEnd = x + RAIN_WIDTH;
+    float zStart = z - RAIN_WIDTH;
+    float zEnd = z + RAIN_WIDTH;
+
+    vertices.push_back(glm::vec3(xStart, yStart, zStart));
+    vertices.push_back(glm::vec3(xEnd, yStart, zStart));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+    vertices.push_back(glm::vec3(xStart, yStart, zEnd));
+    vertices.push_back(glm::vec3(xStart, yStart, zStart));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+    vertices.push_back(glm::vec3(xEnd, yStart, zEnd));
+    vertices.push_back(glm::vec3(xEnd, yStart, zStart));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+    vertices.push_back(glm::vec3(xStart, yStart, zEnd));
+    vertices.push_back(glm::vec3(xEnd, yStart, zEnd));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+
+    return vertices;
+}
+
+void draw(GLuint VAO, Shader shader, int size) {
+    glBindVertexArray(VAO);
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3( 0.0f,  0.0f,  0.0f));
+    float angle = 20.0f * 0;
+    model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+    shader.setMat4("model", model);
+    glDrawArrays(GL_TRIANGLES, 0, size);
+}
+
 int main() {
     initGL();
     GLFWwindow* window = createWindow();
@@ -120,16 +176,23 @@ int main() {
 
     Shader cameraShader("camera/camera.vs", "camera/camera.fs");
 
-	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> carVertices;
 	std::vector<glm::vec2> uvs;
 	std::vector<glm::vec3> normals;
-	bool res = loadOBJ("model/model.obj", vertices, uvs, normals);
+	bool res = loadOBJ("model/model.obj", carVertices, uvs, normals);
 
     GLuint VAOCar = initVertexArray();
-    GLuint vertexBuffer = initVertexBuffer(vertices);
+    GLuint VBOCar = initVertexBuffer(carVertices);
     GLuint uvBuffer = initUVBuffer(uvs);
-    renderCar(VAOCar, vertexBuffer, uvBuffer);
+    setupCar(VBOCar, uvBuffer);
+    
+    std::vector<glm::vec3> rainVertices = generateRainVertices();
+    Rain rain(200, 7);
+    GLuint VAORain = initVertexArray();
+    GLuint VBORain = initVertexBuffer(rainVertices);
+    setupRain(VBORain);
 
+    float lastMoveFrame = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
@@ -144,24 +207,28 @@ int main() {
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         cameraShader.setMat4("projection", projection);
-
         glm::mat4 view = camera.GetViewMatrix();
         cameraShader.setMat4("view", view);
+        
+        cameraShader.setVec3("offset", glm::vec3(0.0, 0.0, 0.0));
+        draw(VAOCar, cameraShader, carVertices.size());
 
-        glBindVertexArray(VAOCar);
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3( 0.0f,  0.0f,  0.0f));
-        float angle = 20.0f * 0;
-        model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-        cameraShader.setMat4("model", model);
-        glDrawArrays(GL_TRIANGLES, 0, vertices.size());
+        for (RainDrop raindrop : rain.getRainDrops()) {
+            cameraShader.setVec3("offset", raindrop.getOffset());
+            draw(VAORain, cameraShader, rainVertices.size());
+        }
+
+        if (currentFrame - lastMoveFrame > UPDATE_DELAY) {
+            lastMoveFrame = currentFrame;
+            rain.update();
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
     glDeleteVertexArrays(1, &VAOCar);
-    glDeleteBuffers(1, &vertexBuffer);
+    glDeleteBuffers(1, &VBOCar);
     glDeleteBuffers(1, &uvBuffer);
 
     glfwTerminate();
