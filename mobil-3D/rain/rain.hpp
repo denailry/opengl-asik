@@ -41,9 +41,7 @@ public:
                 newRainDrops.push_back(generateRain());
             }
         }
-
-        std::cout << newRainDrops.size() << std::endl;
-
+        
         this->raindrops = newRainDrops;
     }
 
