@@ -34,6 +34,13 @@ bool firstMouse = true;
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
 
+// lighting		
+glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+
+uniform vec2 res;//The width and height of our screen
+uniform sampler2D bufferTexture;//Our input texture
+uniform vec3 smokeSource;//The x,y are the posiiton. The z is the power/density
+
 int main()
 {
     // glfw: initialize and configure
@@ -75,6 +82,8 @@ int main()
     // build and compile our shader zprogram
     // ------------------------------------
     Shader ourShader("camera.vs", "camera.fs");
+    Shader lightingShader("basic_lighting.vs", "basic_lighting.fs");
+	Shader lampShader("lamp.vs", "lamp.fs");
 
     // Read our .obj file
 	std::vector<glm::vec3> vertices;
@@ -125,6 +134,15 @@ int main()
     // texture coord attribute
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
+
+    unsigned int lightVAO;
+    glGenVertexArrays(1, &lightVAO);
+    glBindVertexArray(lightVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+    // note that we update the lamp's position attribute's stride to reflect the updated buffer data
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
 
 
     // load and create a texture 
@@ -204,6 +222,14 @@ int main()
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); 
 
+        //activate shader when setting uniforms/drawing objects
+        lightingShader.use();
+        lightingShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
+        lightingShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+        lightingShader.setVec3("lightPos", lightPos);
+        lightingShader.setVec3("viewPos", camera.Position);
+
+
         // bind textures on corresponding texture units
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture1);
@@ -224,21 +250,65 @@ int main()
         // render boxes
         glBindVertexArray(VAO);
         glm::mat4 model = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+
+        lightingShader.setMat4("model", model);
+
         model = glm::translate(model, glm::vec3( 0.0f,  0.0f,  0.0f));
         float angle = 20.0f * 0;
         model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
         ourShader.setMat4("model", model);
         glDrawArrays(GL_TRIANGLES, 0, vertices.size() );
 
+        lightingShader.setMat4("projection", projection);
+        lightingShader.setMat4("view", view);
+
+        // also draw the lamp object
+        lampShader.use();
+        lampShader.setMat4("projection", projection);
+        lampShader.setMat4("view", view);
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, lightPos);
+        model = glm::scale(model, glm::vec3(0.2f)); // a smaller cube
+        lampShader.setMat4("model", model);
+
+        glBindVertexArray(lightVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
+        
+        // particle smoke
+        glm::vec2 pixel = gl_FragCoord.xy / res.xy;
+        gl_FragColor = texture2D( bufferTexture, pixel );
+
+        //Get the distance of the current pixel from the smoke source
+        float dist = distance(smokeSource.xy,gl_FragCoord.xy);
+        //Generate smoke when mouse is pressed
+        gl_FragColor.rgb += smokeSource.z * max(15.0-dist,0.0);
+
+        //Smoke diffuse
+        float xPixel = 1.0/res.x;//The size of a single pixel
+        float yPixel = 1.0/res.y;
+        vec4 rightColor = texture2D(bufferTexture,vec2(pixel.x+xPixel,pixel.y));
+        vec4 leftColor = texture2D(bufferTexture,vec2(pixel.x-xPixel,pixel.y));
+        vec4 upColor = texture2D(bufferTexture,vec2(pixel.x,pixel.y+yPixel));
+        vec4 downColor = texture2D(bufferTexture,vec2(pixel.x,pixel.y-yPixel));
+        //Diffuse equation
+        float factor = 8.0 * 0.016 * (leftColor.r + rightColor.r + downColor.r * 3.0 + upColor.r - 6.0 * gl_FragColor.r);
+        
+        //Account for low precision of texels
+        float minimum = 0.003;
+        if(factor >= -minimum && factor < 0.0) factor = -minimum;
+
+        gl_FragColor.rgb += factor;
     }
 
     // optional: de-allocate all resources once they've outlived their purpose:
     // ------------------------------------------------------------------------
     glDeleteVertexArrays(1, &VAO);
+    glDeleteVertexArrays(1, &lightVAO);
     glDeleteBuffers(1, &vertexbuffer);
     glDeleteBuffers(1, &uvbuffer);
 
