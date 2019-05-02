@@ -14,136 +14,191 @@
 #include "camera/camera.h"
 #include "lib/filesystem.h"
 #include "lib/objloader.hpp"
+#include "rain/raindrop.hpp"
+#include "rain/rain.hpp"
+#include "smoke/particle.hpp"
+#include "smoke/smoke.hpp"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 
-// settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-// camera
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// timing
-float deltaTime = 0.0f;	// time between current frame and last frame
+float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-// lighting		
-glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+const float UPDATE_DELAY = 0.003;
 
-// uniform vec2 res;//The width and height of our screen
-// uniform sampler2D bufferTexture;//Our input texture
-// uniform vec3 smokeSource;//The x,y are the posiiton. The z is the power/density
-
-int main()
-{
-    // glfw: initialize and configure
-    // ------------------------------
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    // glfw window creation
-    // --------------------
+GLFWwindow* createWindow() {
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Mobil 3D", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
-        return -1;
+        return 0;
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-    // glad: load all OpenGL function pointers
-    // ---------------------------------------
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cout << "Failed to initialize GLAD" << std::endl;
-        return -1;
+        return 0;
     }
 
-    // configure global opengl state
-    // -----------------------------
     glEnable(GL_DEPTH_TEST);
 
-    // build and compile our shader zprogram
-    // ------------------------------------
-    Shader ourShader("camera/camera.vs", "camera/camera.fs");
-    Shader lightingShader("lightning/basic_lighting.vs", "lightning/basic_lighting.fs");
-	Shader lampShader("lamp.vs", "lamp.fs");
+    return window;
+}
 
-    // Read our .obj file
-	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec2> uvs;
-	std::vector<glm::vec3> normals; // Won't be used at the moment.
-	bool res = loadOBJ("model.obj", vertices, uvs, normals);
+void initGL() {
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+}
 
-    unsigned int VAO;
+GLuint initVertexArray() {
+    GLuint VAO;
     glGenVertexArrays(1, &VAO);
-
     glBindVertexArray(VAO);
+    return VAO;
+}
 
+GLuint initVertexBuffer(std::vector<glm::vec3> &vertices) {
     GLuint vertexbuffer;
 	glGenBuffers(1, &vertexbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), &vertices[0], GL_STATIC_DRAW);
+    return vertexbuffer;
+}
 
+GLuint initUVBuffer(std::vector<glm::vec2> &uvs) {
     GLuint uvbuffer;
 	glGenBuffers(1, &uvbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
 	glBufferData(GL_ARRAY_BUFFER, uvs.size() * sizeof(glm::vec2), &uvs[0], GL_STATIC_DRAW);
+    return uvbuffer;
+}
 
-    // 1rst attributef bufer : vertices
+void setupCar(GLuint VBO, GLuint UVS) {
+    // 1rst attribute buffer : vertices
     glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glVertexAttribPointer(
-        0,                  // attribute
-        3,                  // size
-        GL_FLOAT,           // type
-        GL_FALSE,           // normalized?
-        0,                  // stride
-        (void*)0            // array buffer offset
+        0,          // attribute
+        3,          // size
+        GL_FLOAT,   // type
+        GL_FALSE,   // normalized?
+        0,          // stride
+        (void*)0    // array buffer offset
     );
 
     // 2nd attribute buffer : UVs
     glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, UVS);
     glVertexAttribPointer(
-        1,                                // attribute
-        2,                                // size
-        GL_FLOAT,                         // type
-        GL_FALSE,                         // normalized?
-        0,                                // stride
-        (void*)0                          // array buffer offset
+        1,          // attribute
+        2,          // size
+        GL_FLOAT,   // type
+        GL_FALSE,   // normalized?
+        0,          // stride
+        (void*)0    // array buffer offset
     );
+}
 
+void setupRain(GLuint VBO) {
     glEnableVertexAttribArray(0);
-    // texture coord attribute
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glVertexAttribPointer(
+        0,          // attribute
+        3,          // size
+        GL_FLOAT,   // type
+        GL_FALSE,   // normalized?
+        0,          // stride
+        (void*)0    // array buffer offset
+    );
+}
 
-    unsigned int lightVAO;
-    glGenVertexArrays(1, &lightVAO);
-    glBindVertexArray(lightVAO);
+std::vector<glm::vec3> generateRainVertices() {
+    std::vector<glm::vec3> vertices;
+    
+    float x = 0;
+    float z = 0;
 
-    glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-    // note that we update the lamp's position attribute's stride to reflect the updated buffer data
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+    float yStart = RAIN_Y_OFFSET;
+    float yEnd = RAIN_Y_OFFSET - RAIN_HEIGHT;
+    float xStart = x - RAIN_WIDTH;
+    float xEnd = x + RAIN_WIDTH;
+    float zStart = z - RAIN_WIDTH;
+    float zEnd = z + RAIN_WIDTH;
 
+    vertices.push_back(glm::vec3(xStart, yStart, zStart));
+    vertices.push_back(glm::vec3(xEnd, yStart, zStart));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+    vertices.push_back(glm::vec3(xStart, yStart, zEnd));
+    vertices.push_back(glm::vec3(xStart, yStart, zStart));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+    vertices.push_back(glm::vec3(xEnd, yStart, zEnd));
+    vertices.push_back(glm::vec3(xEnd, yStart, zStart));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+    vertices.push_back(glm::vec3(xStart, yStart, zEnd));
+    vertices.push_back(glm::vec3(xEnd, yStart, zEnd));
+    vertices.push_back(glm::vec3(x, yEnd, z));
+
+    return vertices;
+}
+
+void draw(GLuint VAO, Shader shader, int size) {
+    glBindVertexArray(VAO);
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3( 0.0f,  0.0f,  0.0f));
+    float angle = 20.0f * 0;
+    model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+    shader.setMat4("model", model);
+    glDrawArrays(GL_TRIANGLES, 0, size);
+}
+
+int main() {
+    initGL();
+    GLFWwindow* window = createWindow();
+    if (window == 0) {
+        return -1;
+    }
+
+    Shader cameraShader("camera/camera.vs", "camera/camera.fs");
+
+	std::vector<glm::vec3> carVertices;
+	std::vector<glm::vec2> uvs;
+	std::vector<glm::vec3> normals;
+	bool res = loadOBJ("model/model.obj", carVertices, uvs, normals);
+
+    GLuint VAOCar = initVertexArray();
+    GLuint VBOCar = initVertexBuffer(carVertices);
+    GLuint uvBuffer = initUVBuffer(uvs);
+    setupCar(VBOCar, uvBuffer);
+    
+    std::vector<glm::vec3> rainVertices = generateRainVertices();
+    Rain rain(200, 7);
+    GLuint VAORain = initVertexArray();
+    GLuint VBORain = initVertexBuffer(rainVertices);
+    setupRain(VBORain);
+
+    std::vector<glm::vec3> smokeVertices = generateRainVertices();
+    Smoke smoke(200, 1);
+    GLuint VAOSmoke = initVertexArray();
+    GLuint VBOSmoke = initVertexBuffer(smokeVertices);
+    setupRain(VBOSmoke);
 
     // load and create a texture 
     // -------------------------
@@ -199,127 +254,59 @@ int main()
 
     // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
     // -------------------------------------------------------------------------------------------
-    ourShader.use();
-    ourShader.setInt("texture1", 0);
-    ourShader.setInt("texture2", 1);
+    cameraShader.use();
+    cameraShader.setInt("texture1", 0);
+    cameraShader.setInt("texture2", 1);
 
-    // render loop
-    // -----------
-    while (!glfwWindowShouldClose(window))
-    {
-        // per-frame time logic
-        // --------------------
+    float lastMoveFrame = glfwGetTime();
+    while (!glfwWindowShouldClose(window)) {
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // input
-        // -----
         processInput(window);
 
-        // render
-        // ------
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); 
 
-        //activate shader when setting uniforms/drawing objects
-        lightingShader.use();
-        lightingShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
-        lightingShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-        lightingShader.setVec3("lightPos", lightPos);
-        lightingShader.setVec3("viewPos", camera.Position);
+        cameraShader.use();
 
-
-        // bind textures on corresponding texture units
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture1);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, texture2);
-
-        // activate shader
-        ourShader.use();
-
-        // pass projection matrix to shader (note that in this case it could change every frame)
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        ourShader.setMat4("projection", projection);
-
-        // camera/view transformation
+        cameraShader.setMat4("projection", projection);
         glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("view", view);
+        cameraShader.setMat4("view", view);
+        
+        cameraShader.setVec3("offset", glm::vec3(0.0, 0.0, 0.0));
+        draw(VAOCar, cameraShader, carVertices.size());
 
-        // render boxes
-        glBindVertexArray(VAO);
-        glm::mat4 model = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+        for (RainDrop raindrop : rain.getRainDrops()) {
+            cameraShader.setVec3("offset", raindrop.getOffset());
+            draw(VAORain, cameraShader, rainVertices.size());
+        }
+        
+        for (Particle particle : smoke.getParticles()) {
+            cameraShader.setVec3("offset", particle.getOffset());
+            draw(VAOSmoke, cameraShader, smokeVertices.size());
+        }
 
-        lightingShader.setMat4("model", model);
+        if (currentFrame - lastMoveFrame > UPDATE_DELAY) {
+            lastMoveFrame = currentFrame;
+            rain.update();
+            smoke.update();
+        }
 
-        model = glm::translate(model, glm::vec3( 0.0f,  0.0f,  0.0f));
-        float angle = 20.0f * 0;
-        model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-        ourShader.setMat4("model", model);
-        glDrawArrays(GL_TRIANGLES, 0, vertices.size() );
-
-        lightingShader.setMat4("projection", projection);
-        lightingShader.setMat4("view", view);
-
-        // also draw the lamp object
-        lampShader.use();
-        lampShader.setMat4("projection", projection);
-        lampShader.setMat4("view", view);
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, lightPos);
-        model = glm::scale(model, glm::vec3(0.2f)); // a smaller cube
-        lampShader.setMat4("model", model);
-
-        glBindVertexArray(lightVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
-        
-        // // particle smoke
-        // glm::vec2 pixel = gl_FragCoord.xy / res.xy;
-        // gl_FragColor = texture2D( bufferTexture, pixel );
-
-        // //Get the distance of the current pixel from the smoke source
-        // float dist = distance(smokeSource.xy,gl_FragCoord.xy);
-        // //Generate smoke when mouse is pressed
-        // gl_FragColor.rgb += smokeSource.z * max(15.0-dist,0.0);
-
-        // //Smoke diffuse
-        // float xPixel = 1.0/res.x;//The size of a single pixel
-        // float yPixel = 1.0/res.y;
-        // vec4 rightColor = texture2D(bufferTexture,vec2(pixel.x+xPixel,pixel.y));
-        // vec4 leftColor = texture2D(bufferTexture,vec2(pixel.x-xPixel,pixel.y));
-        // vec4 upColor = texture2D(bufferTexture,vec2(pixel.x,pixel.y+yPixel));
-        // vec4 downColor = texture2D(bufferTexture,vec2(pixel.x,pixel.y-yPixel));
-        // //Diffuse equation
-        // float factor = 8.0 * 0.016 * (leftColor.r + rightColor.r + downColor.r * 3.0 + upColor.r - 6.0 * gl_FragColor.r);
-        
-        // //Account for low precision of texels
-        // float minimum = 0.003;
-        // if(factor >= -minimum && factor < 0.0) factor = -minimum;
-
-        // gl_FragColor.rgb += factor;
     }
 
-    // optional: de-allocate all resources once they've outlived their purpose:
-    // ------------------------------------------------------------------------
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteVertexArrays(1, &lightVAO);
-    glDeleteBuffers(1, &vertexbuffer);
-    glDeleteBuffers(1, &uvbuffer);
+    glDeleteVertexArrays(1, &VAOCar);
+    glDeleteBuffers(1, &VBOCar);
+    glDeleteBuffers(1, &uvBuffer);
 
-    // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
     glfwTerminate();
     return 0;
 }
 
-// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
-// ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -335,19 +322,11 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
-// glfw: whenever the window size changed (by OS or user resize) this callback function executes
-// ---------------------------------------------------------------------------------------------
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-    // make sure the viewport matches the new window dimensions; note that width and 
-    // height will be significantly larger than specified on retina displays.
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-// glfw: whenever the mouse moves, this callback is called
-// -------------------------------------------------------
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
-{
+void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
     if (firstMouse)
     {
         lastX = xpos;
@@ -356,7 +335,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
     }
 
     float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+    float yoffset = lastY - ypos;
 
     lastX = xpos;
     lastY = ypos;
@@ -364,9 +343,6 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
-// glfw: whenever the mouse scroll wheel scrolls, this callback is called
-// ----------------------------------------------------------------------
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
-{
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     camera.ProcessMouseScroll(yoffset);
 }
