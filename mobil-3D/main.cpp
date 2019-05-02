@@ -37,9 +37,6 @@ float lastFrame = 0.0f;
 // lighting		
 glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
 
-uniform vec2 res;//The width and height of our screen
-uniform sampler2D bufferTexture;//Our input texture
-uniform vec3 smokeSource;//The x,y are the posiiton. The z is the power/density
 
 int main()
 {
@@ -274,11 +271,6 @@ int main()
         glBindVertexArray(lightVAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-        
         // particle smoke
         glm::vec2 pixel = gl_FragCoord.xy / res.xy;
         gl_FragColor = texture2D( bufferTexture, pixel );
@@ -303,6 +295,11 @@ int main()
         if(factor >= -minimum && factor < 0.0) factor = -minimum;
 
         gl_FragColor.rgb += factor;
+
+        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
+        // -------------------------------------------------------------------------------
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
     // optional: de-allocate all resources once they've outlived their purpose:
