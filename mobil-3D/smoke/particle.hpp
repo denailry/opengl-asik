@@ -14,7 +14,7 @@ public:
     }
 
     void move() {
-        offset += glm::vec3(0.0, 0.01, -0.01);
+        offset += glm::vec3(0.0, 0.0, -0.01);
     }
 
     glm::vec3 getOffset() const {

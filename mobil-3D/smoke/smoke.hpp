@@ -29,7 +29,7 @@ public:
         std::vector<Particle> newParticles;
 
         for (Particle &particle : particles) {
-            if (particle.getOffset().y < 5.0) {
+            if (particle.getOffset().z > -4.0) {
                 particle.move();
                 newParticles.push_back(particle);
             }
